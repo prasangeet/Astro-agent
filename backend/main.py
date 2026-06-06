@@ -1,8 +1,11 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
+from dotenv import load_dotenv
 from database import Base
 from database import engine
+import os
 
 from services.knowledge_service import KnowledgeService
 
@@ -17,19 +20,25 @@ from models.birth_profile import BirthProfile
 from models.natal_chart import NatalChart
 from models.conversation import Conversation
 
-app = FastAPI(title="AstroAgent")
+load_dotenv()
 
 
-@app.on_event("startup")
-def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     KnowledgeService.load()
+
+    yield
+
+
+app = FastAPI(
+    title="AstroAgent",
+    lifespan=lifespan,
+)
 
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-    ],
+    allow_origins=[os.environ.get("FRONTEND_URL") or "http://localhost:5174"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
