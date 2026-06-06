@@ -173,6 +173,57 @@ flowchart TD
     USERS --> DB
 ```
 
+## Database Schema
+
+```mermaid
+erDiagram
+    USER ||--o{ BIRTH_PROFILE : has
+    BIRTH_PROFILE ||--|| NATAL_CHART : generates
+    USER ||--o{ CONVERSATION : stores
+    USER ||--|| MEMORY : summarizes
+    USER {
+        int id
+        string name
+    }
+    BIRTH_PROFILE {
+        int id
+        int user_id
+        date date
+        time time
+        string place
+        float latitude
+        float longitude
+        string timezone
+    }
+    NATAL_CHART {
+        int id
+        int birth_profile_id
+        json chart_data
+    }
+    CONVERSATION {
+        int id
+        int user_id
+        string role
+        text content
+        datetime created_at
+    }
+    MEMORY {
+        int id
+        int user_id
+        text summary
+    }
+    USAGE_METRIC {
+        int id
+        string request_id
+        int user_id
+        string model
+        int prompt_tokens
+        int completion_tokens
+        int total_tokens
+        datetime created_at
+    }
+```
+
 ## LangGraph Workflow
 
 The agent state currently contains:
