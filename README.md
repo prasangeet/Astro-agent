@@ -15,7 +15,7 @@
 
 ## Demo
 
-- Demo Video: [ADD_LINK_HERE](ADD_LINK_HERE)
+- Demo Video: [LINK](https://drive.google.com/file/d/12HhyOn6Appcz1Z85ZtllhkP-A9_p7eB4/view?usp=sharing)
 
 ## Screenshots
 
