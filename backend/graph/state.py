@@ -8,3 +8,7 @@ class AgentState(TypedDict):
     messages: Annotated[list, add_messages]
 
     user_id: int
+
+    request_id: str
+
+    tool_calls: list[str]

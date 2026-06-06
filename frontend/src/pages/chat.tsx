@@ -1,21 +1,23 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import DefaultLayout from "@/layouts/default";
-import {
-  Button,
-  Card,
-  Input,
-  DatePicker,
-  TimeField,
-  Label,
-  DateField,
-  Calendar,
-  Badge,
-  Tooltip
-} from "@heroui/react";
+import { Button, Input, Tooltip, toast, Spinner } from "@heroui/react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import clsx from "clsx";
+import BirthDetailsModal from "@/components/BirthDetailsModal";
+import NameModal from "@/components/NameModal";
+
+import {
+  createBirthProfile,
+  getBirthProfile,
+  updateBirthProfile
+} from "@/api/birth-profile";
+
+import { createUser } from "@/api/user";
+import { sendMessage } from "@/api/chat";
+import { getUserId, saveUser } from "@/utils/user";
 
 const CompassIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className={props.className}>
@@ -30,6 +32,12 @@ const SendIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+const GlitterStarIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg fill="currentColor" viewBox="0 0 24 24" className={props.className}>
+    <path d="M12 24c0-6.627 5.373-12 12-12-6.373 0-12-5.373-12-12-0 6.627-5.373 12-12 12 6.373 0 12 5.373 12 12z" />
+  </svg>
+);
+
 interface Message {
   id: string;
   role: "user" | "assistant";
@@ -37,72 +45,246 @@ interface Message {
   timestamp: string;
 }
 
+// Utility function to extract flat string content out of react-markdown's node children structure
+// This prevents HeroUI/React from throwing [object Object] assertion crashes.
+const flattenNodeText = (children: React.ReactNode): string => {
+  if (!children) return "";
+  if (typeof children === "string") return children;
+  if (typeof children === "number") return children.toString();
+  if (Array.isArray(children)) return children.map(flattenNodeText).join("");
+  if (React.isValidElement(children) && children.props && children.props.children) {
+    return flattenNodeText(children.props.children);
+  }
+  return "";
+};
+
 export default function Chat() {
+  const [isNameModalOpen, setIsNameModalOpen] = useState(false);
+  const [userName, setUserName] = useState("");
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [userId, setUserId] = useState<number | null>(null);
+
   const [hasChartData, setHasChartData] = useState(false);
-  const [birthLocation, setBirthLocation] = useState("");
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isOnboardingLoading, setIsOnboardingLoading] = useState(false);
+
+  const [birthDate, setBirthDate] = useState<any>(null);
+  const [birthTime, setBirthTime] = useState<any>(null);
+  const [birthLocation, setBirthLocation] = useState("");
 
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "initial-welcome",
       role: "assistant",
       content: "Pranam. I am **Aradhana**, your daily spiritual companion. Provide your birth geometry parameters above, or ask me directly to interpret current planetary configurations.",
-      timestamp: "12:00 PM"
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     }
   ]);
   const [inputValue, setInputValue] = useState("");
   const [isAgentStreaming, setIsAgentStreaming] = useState(false);
-
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [thinkingStatus, setThinkingStatus] = useState("Aligning planetary lenses...");
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!isAgentStreaming) return;
+    const statusPhases = [
+      "Aligning planetary lenses...",
+      "Querying LangGraph cosmic state registry...",
+      "Intersecting current ephemeris with natal house systems...",
+      "Synthesizing aspect geometric angles...",
+      "Finalizing intuitive interpretive summary..."
+    ];
+    let currentPhase = 0;
+    const interval = setInterval(() => {
+      if (currentPhase < statusPhases.length - 1) {
+        currentPhase++;
+        setThinkingStatus(statusPhases[currentPhase]);
+      }
+    }, 3200);
+    return () => clearInterval(interval);
+  }, [isAgentStreaming]);
+
+  useEffect(() => {
+    window.scrollTo({
+      top: document.documentElement.scrollHeight,
+      behavior: "smooth"
+    });
   }, [messages, isAgentStreaming]);
 
-  const handleOnboardingSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!birthLocation.trim()) return;
+  useEffect(() => {
+    const existingUserId = getUserId();
+    const savedName = localStorage.getItem("user_name");
+    if (savedName) {
+      setUserName(savedName);
+    }
 
-    setIsOnboardingLoading(true);
-    setTimeout(() => {
-      setIsOnboardingLoading(false);
-      setHasChartData(true);
+    if (!existingUserId) {
+      setIsNameModalOpen(true);
+      return;
+    }
+    setUserId(existingUserId);
+    handleLoadBirthProfile(existingUserId);
+  }, []);
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `sys-onboarding-${Date.now()}`,
-          role: "assistant",
-          content: `Birth chart computed successfully for location **${birthLocation}**. Your natal geometry is registered.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        }
-      ]);
-    }, 1400);
+  const handleLoadBirthProfile = async (targetId: number) => {
+    try {
+      const profile = await getBirthProfile(targetId);
+      if (profile) {
+        setBirthLocation(profile.place);
+        setHasChartData(true);
+        toast.success("Welcome back! Stored natal chart loaded.");
+        return profile;
+      }
+      return null;
+    } catch (error) {
+      toast.info("Session verified. Please configure your birth profile details.");
+      return null;
+    }
   };
 
-  const handleSendMessage = (textToSend?: string) => {
-    const targetText = textToSend || inputValue;
-    if (!targetText.trim() || isAgentStreaming) return;
+  const handleCreateUser = async () => {
+    if (!userName.trim()) {
+      toast.warning("Please enter a valid identity descriptor label.");
+      return;
+    }
+    try {
+      setIsCreatingUser(true);
+      const user = await createUser({ name: userName.trim() });
+      saveUser(user.id, user.name);
+      localStorage.setItem("user_name", user.name);
+      setUserId(user.id);
+      setIsNameModalOpen(false);
+      toast.success(`Identity established. Welcome, ${user.name}!`);
+      setIsDialogOpen(true);
+    } catch (error) {
+      console.error(error);
+      toast.danger("Failed to initialize user session registry.");
+    } finally {
+      setIsCreatingUser(false);
+    }
+  };
 
-    const timestampStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const userMessageId = `user-${Date.now()}`;
-
-    setMessages((prev) => [...prev, { id: userMessageId, role: "user", content: targetText, timestamp: timestampStr }]);
-    if (!textToSend) setInputValue("");
-    setIsAgentStreaming(true);
-
-    setTimeout(() => {
+  const handleCreateBirthProfile = async (e: React.FormEvent) => {
+    try {
+      setIsOnboardingLoading(true);
+      await createBirthProfile({
+        user_id: userId!,
+        date: birthDate.toString(),
+        time: birthTime.toString(),
+        place: birthLocation,
+      });
+      setHasChartData(true);
+      setIsDialogOpen(false);
+      toast.success("Birth matrix configuration saved successfully!");
       setMessages((prev) => [
         ...prev,
         {
-          id: `assistant-${Date.now()}`,
+          id: crypto.randomUUID(),
           role: "assistant",
-          content: "### Planetary Alignment Matrix\n\nAnalyzing historical planetary indices relative to your birth positions.",
+          content: `Birth chart computed successfully for **${birthLocation}**. You may now prompt the computational AstroAgent freely.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        },
+      ]);
+    } catch (error) {
+      console.error(error);
+      toast.danger("Could not compute profile geometry.");
+    } finally {
+      setIsOnboardingLoading(false);
+    }
+  };
+
+  const handleUpdateBirthProfile = async (e: React.FormEvent) => {
+    try {
+      setIsOnboardingLoading(true);
+      await updateBirthProfile(userId!, {
+        user_id: userId!,
+        date: birthDate.toString(),
+        time: birthTime.toString(),
+        place: birthLocation,
+      });
+      setIsDialogOpen(false);
+      toast.success("Profile chart matrix updated successfully!");
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: "Birth profile updated successfully. Natal chart regenerated.",
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        },
+      ]);
+    } catch (error) {
+      console.error(error);
+      toast.danger("Failed to update profile geometric specifications.");
+    } finally {
+      setIsOnboardingLoading(false);
+    }
+  };
+
+  const handleOnboardingSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!birthDate || !birthTime || !birthLocation.trim()) {
+      toast.warning("Please fill in all mandatory calculation components.");
+      return;
+    }
+    if (hasChartData) {
+      await handleUpdateBirthProfile(e);
+      return;
+    }
+    await handleCreateBirthProfile(e);
+  };
+
+  const handleSendMessage = async (textToSend?: string) => {
+    const targetText = textToSend || inputValue;
+    if (!targetText.trim()) return;
+
+    if (!hasChartData) {
+      toast.warning("AstroAgent requires coordinates. Please set your birth details first.");
+      setIsDialogOpen(true);
+      return;
+    }
+    if (isAgentStreaming) {
+      toast.warning("System stream active. Please wait for the current alignment output cycle to complete.");
+      return;
+    }
+
+    const timestampStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const userMessageId = crypto.randomUUID();
+
+    setMessages((prev) => [
+      ...prev,
+      { id: userMessageId, role: "user", content: targetText, timestamp: timestampStr }
+    ]);
+
+    if (!textToSend) setInputValue("");
+    setThinkingStatus("Aligning planetary lenses...");
+    setIsAgentStreaming(true);
+
+    try {
+      const result = await sendMessage({ user_id: userId!, message: targetText });
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: result.response,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }
       ]);
+    } catch (error) {
+      console.error(error);
+      toast.danger("System failure communication node trace broken.");
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: "System communication link failure. Unable to parse coordinates context parameters with AstroAgent pipeline graph.",
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+      ]);
+    } finally {
       setIsAgentStreaming(false);
-    }, 2000);
+    }
   };
 
   const starterPrompts = [
@@ -111,175 +293,141 @@ export default function Chat() {
     { label: "✨ Spiritual Advice", text: "Suggest an intentionally tailored meditation focus based on my current lunar alignment." }
   ];
 
+  const userInitial = userName.trim() ? userName.trim()[0].toUpperCase() : "U";
+
   return (
     <DefaultLayout>
-      <div className="w-full h-[calc(100vh-5rem)] max-w-5xl mx-auto flex flex-col p-4 sm:p-6 gap-4 overflow-hidden">
+      <div className="w-full min-h-screen bg-background relative flex flex-col overflow-visible">
 
-        {/* Onboarding Input Panel */}
-        <section className="w-full flex-shrink-0">
-          <Card className="p-4 bg-surface-secondary/30 border border-separator/60 rounded-[var(--field-radius)] shadow-none">
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between border-b border-separator/40 pb-2">
-                <div className="flex items-center gap-2">
-                  <CompassIcon className="w-4 h-4 text-accent" />
-                  <h2 className="text-xs font-bold tracking-wider uppercase text-foreground">
-                    {hasChartData ? "Natal Configuration Active" : "Initialize Computational Chart Details"}
-                  </h2>
-                </div>
-                {hasChartData && (
-                  <Badge content="Grounded" color="success" className="text-[10px]" />
-                )}
-              </div>
-
-              <form onSubmit={handleOnboardingSubmit} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
-
-                {/* 1. DatePicker implementing correct Reference formatting + alignment */}
-                <div className="flex flex-col w-full text-foreground">
-                  <DatePicker
-                    name="birthDate"
-                    className="w-full"
-                  >
-                    <Label className="text-xs font-medium text-foreground/70 block mb-1">Date of Birth</Label>
-                    <DateField.Group className="flex h-10 w-full items-center justify-between rounded-xl border border-separator/60 bg-surface-secondary/20 px-3 text-sm focus-within:ring-2 focus-within:ring-accent">
-                      <DateField.Input className="flex gap-0.5 select-none text-foreground">
-                        {(segment) => <DateField.Segment segment={segment} className="px-0.5 outline-none focus:bg-accent focus:text-accent-foreground rounded-sm" />}
-                      </DateField.Input>
-                      <DateField.Suffix>
-                        <DatePicker.Trigger className="text-foreground/50 hover:text-foreground transition-colors">
-                          <DatePicker.TriggerIndicator />
-                        </DatePicker.Trigger>
-                      </DateField.Suffix>
-                    </DateField.Group>
-
-                    <DatePicker.Popover className="bg-background border border-separator rounded-xl shadow-xl z-50 overflow-hidden">
-                      <Calendar aria-label="Choose date" className="w-64 sm:w-72 max-w-full bg-background p-3 text-foreground">
-                        <Calendar.Header className="flex items-center justify-between pb-2 mb-1 border-b border-separator/30">
-                          <Calendar.YearPickerTrigger className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-foreground/80 hover:text-accent transition-colors">
-                            <Calendar.YearPickerTriggerHeading />
-                            <Calendar.YearPickerTriggerIndicator />
-                          </Calendar.YearPickerTrigger>
-                          <div className="flex gap-0.5">
-                            <Calendar.NavButton slot="previous" className="p-1.5 rounded-lg hover:bg-surface-secondary text-foreground/70" />
-                            <Calendar.NavButton slot="next" className="p-1.5 rounded-lg hover:bg-surface-secondary text-foreground/70" />
-                          </div>
-                        </Calendar.Header>
-                        <Calendar.Grid className="w-full border-collapse gap-1">
-                          <Calendar.GridHeader>
-                            {(day) => (
-                              <Calendar.HeaderCell className="text-[11px] font-medium text-muted p-1 text-center w-8 h-8">
-                                {day.slice(0, 2)}
-                              </Calendar.HeaderCell>
-                            )}
-                          </Calendar.GridHeader>
-                          <Calendar.GridBody>
-                            {(date) => (
-                              <Calendar.Cell
-                                date={date}
-                                className="p-0 text-center text-xs rounded-lg hover:bg-accent/20 cursor-pointer w-8 h-8 flex items-center justify-center transition-all data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground data-[disabled=true]:opacity-30 data-[disabled=true]:pointer-events-none"
-                              />
-                            )}
-                          </Calendar.GridBody>
-                        </Calendar.Grid>
-                        <Calendar.YearPickerGrid className="w-full gap-2 pt-2">
-                          <Calendar.YearPickerGridBody>
-                            {({ year }) => (
-                              <Calendar.YearPickerCell
-                                year={year}
-                                className="p-1 text-center text-xs rounded-md hover:bg-surface-secondary cursor-pointer transition-colors"
-                              />
-                            )}
-                          </Calendar.YearPickerGridBody>
-                        </Calendar.YearPickerGrid>
-                      </Calendar>
-                    </DatePicker.Popover>
-                  </DatePicker>
-                </div>
-
-                {/* 2. TimeField using proper composite mapping primitives */}
-                <div className="flex flex-col w-full text-foreground">
-                  <TimeField name="birthTime" className="w-full">
-                    <Label className="text-xs font-medium text-foreground/70 block mb-1">Time of Birth</Label>
-                    <TimeField.Group className="flex h-10 w-full items-center rounded-xl border border-separator/60 bg-surface-secondary/20 px-3 text-sm focus-within:ring-2 focus-within:ring-accent">
-                      <TimeField.Input className="flex gap-0.5 select-none text-foreground">
-                        {(segment) => <TimeField.Segment segment={segment} className="px-0.5 outline-none focus:bg-accent focus:text-accent-foreground rounded-sm" />}
-                      </TimeField.Input>
-                    </TimeField.Group>
-                  </TimeField>
-                </div>
-
-                {/* 3. Birth Location Input */}
-                <div className="flex flex-col w-full">
-                  <Input
-                    label="Birth Location"
-                    labelPlacement="outside"
-                    placeholder="City, Country..."
-                    size="sm"
-                    variant="bordered"
-                    value={birthLocation}
-                    onChange={(e) => setBirthLocation(e.target.value)}
-                    className="w-full text-foreground"
-                  />
-                </div>
-
-                {/* 4. Action Button */}
-                <Button
-                  type="submit"
-                  color={hasChartData ? "default" : "primary"}
-                  isLoading={isOnboardingLoading}
-                  className="w-full font-medium text-xs tracking-wider uppercase h-10 rounded-xl"
-                >
-                  {hasChartData ? "Update Matrix" : "Compute Ephemeris"}
-                </Button>
-              </form>
-            </div>
-          </Card>
+        {/* Header Section */}
+        <section className="sticky top-0 w-full h-14 border-b border-separator/40 px-6 flex items-center justify-between bg-background/80 backdrop-blur-md z-30 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <CompassIcon className="w-4 h-4 text-accent" />
+            <h2 className="text-xs font-bold tracking-wider uppercase text-foreground">
+              {hasChartData ? "Natal Configuration Active" : "Computational AstroAgent Graph"}
+            </h2>
+            {hasChartData && (
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium tracking-wide bg-success/10 text-success border border-success/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
+                Grounded
+              </span>
+            )}
+          </div>
+          <Button
+            variant={hasChartData ? "bordered" : "solid"}
+            color={hasChartData ? "default" : "primary"}
+            onPress={() => setIsDialogOpen(true)}
+            className="text-xs font-semibold uppercase tracking-wider h-8 px-4 rounded-lg border-separator/60"
+            disabled={isNameModalOpen}
+          >
+            {hasChartData ? "Update Birth Details" : "Set Birth Details"}
+          </Button>
         </section>
 
-        {/* Chat Component Stream */}
-        <section className="flex-1 flex flex-col min-h-0 bg-transparent overflow-hidden justify-between">
-          <div className="flex-1 overflow-y-auto flex flex-col gap-6 px-1 mb-4">
+        {/* Message Thread Workspace */}
+        <div className="w-full flex-1 overflow-visible px-4 pt-6 pb-52">
+          <div className="w-full max-w-3xl mx-auto flex flex-col gap-8">
             {messages.map((msg) => (
               <div
                 key={msg.id}
                 className={clsx(
-                  "flex flex-col max-w-[85%] gap-1",
-                  msg.role === "user" ? "self-end items-end" : "self-start items-start"
+                  "flex items-start gap-4 w-full",
+                  msg.role === "user" ? "flex-row-reverse" : "flex-row"
                 )}
               >
-                <div
-                  className={clsx(
-                    "px-4 py-3 rounded-[var(--field-radius)] text-sm leading-relaxed tracking-wide shadow-none",
-                    msg.role === "user"
-                      ? "bg-accent text-accent-foreground rounded-br-none font-medium"
-                      : "bg-surface-secondary/40 border border-separator text-foreground rounded-bl-none w-full"
-                  )}
-                >
-                  <div className="prose prose-sm dark:prose-invert max-w-none text-inherit font-sans space-y-1 block break-words [overflow-wrap:anywhere] select-text">
-                    <ReactMarkdown
-                      components={{
-                        p: ({ children }) => <p className="m-0 leading-relaxed inline-block w-full">{children}</p>,
-                        strong: ({ children }) => <strong className="font-bold text-accent px-0.5">{children}</strong>,
-                      }}
-                    >
-                      {msg.content}
-                    </ReactMarkdown>
+                {msg.role === "user" ? (
+                  <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center bg-accent text-white font-bold text-xs shadow-md border border-accent/20 select-none">
+                    {userInitial}
                   </div>
+                ) : (
+                  <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center bg-surface-secondary text-accent shadow-md border border-separator/60 select-none">
+                    <GlitterStarIcon className="w-4 h-4" />
+                  </div>
+                )}
+
+                <div className={clsx("flex flex-col gap-1.5 max-w-[85%]", msg.role === "user" ? "items-end" : "items-start")}>
+                  <div className="text-[10px] text-muted tracking-widest uppercase font-mono px-0.5">
+                    {msg.role === "user" ? (userName || "User") : "Aradhana"}
+                  </div>
+
+                  <div
+                    className={clsx(
+                      "px-4 py-3 rounded-2xl text-sm leading-relaxed tracking-wide shadow-none border",
+                      msg.role === "user"
+                        ? "bg-accent/10 border-accent/30 text-foreground rounded-tr-none"
+                        : "bg-surface-secondary/30 border-separator text-foreground rounded-tl-none w-full"
+                    )}
+                  >
+                    <div className="prose prose-sm dark:prose-invert max-w-none text-inherit font-sans block break-words [overflow-wrap:anywhere] select-text">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          table: ({ children }) => (
+                            <div className="w-full my-4 overflow-x-auto border border-separator/40 rounded-xl bg-surface-secondary/10">
+                              <table className="w-full text-left border-collapse m-0 p-0">{children}</table>
+                            </div>
+                          ),
+                          thead: ({ children }) => <thead className="bg-surface-secondary/30 border-b border-separator/40">{children}</thead>,
+                          tbody: ({ children }) => <tbody>{children}</tbody>,
+                          tr: ({ children }) => (
+                            <tr className="border-b border-separator/20 last:border-0 hover:bg-surface-secondary/10 transition-colors">
+                              {children}
+                            </tr>
+                          ),
+                          th: ({ children }) => (
+                            <th className="p-3 text-xs font-bold uppercase tracking-wider text-accent">
+                              {flattenNodeText(children)}
+                            </th>
+                          ),
+                          td: ({ children }) => (
+                            <td className="p-3 text-sm text-foreground/80 leading-relaxed [overflow-wrap:anywhere]">
+                              {/* Using simple text flattening to safely output data inside cells */}
+                              {flattenNodeText(children)}
+                            </td>
+                          ),
+                          p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed text-foreground/90">{children}</p>,
+                          strong: ({ children }) => <strong className="font-bold text-accent px-0.5">{children}</strong>,
+                        }}
+                      >
+                        {msg.content}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+                  <span className="text-[9px] text-muted-foreground/60 px-1 font-mono tracking-wider mt-0.5">{msg.timestamp}</span>
                 </div>
-                <span className="text-[10px] text-muted px-2 tracking-widest mt-0.5">{msg.timestamp}</span>
               </div>
             ))}
-            <div ref={messagesEndRef} />
-          </div>
 
-          {/* Input control block */}
-          <footer className="pt-3 pb-4 px-1 bg-transparent border-t border-separator/40 flex flex-col gap-3 flex-shrink-0 w-full relative z-10">
+            {/* Agent Streaming View Container */}
+            {isAgentStreaming && (
+              <div className="flex items-start gap-4 w-full animate-pulse">
+                <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center bg-surface-secondary text-accent border border-separator/60">
+                  <GlitterStarIcon className="w-4 h-4" />
+                </div>
+                <div className="flex flex-col gap-1.5 w-full max-w-[85%]">
+                  <div className="text-[10px] text-muted tracking-widest uppercase font-mono px-0.5">Computing Matrix</div>
+                  <div className="px-5 py-3.5 rounded-2xl rounded-tl-none bg-surface-secondary/20 border border-separator/60 text-foreground flex items-center gap-3">
+                    <Spinner size="sm" color="current" className="text-accent" />
+                    <span className="text-xs font-mono tracking-wide text-muted-foreground">
+                      {thinkingStatus}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Interactive Layout Footer */}
+        <footer className="fixed bottom-0 left-0 right-0 max-w-[calc(100%-16px)] sm:max-w-3xl mx-auto border border-separator/20 rounded-t-2xl bg-background/80 backdrop-blur-md pt-4 pb-6 px-4 z-20 pointer-events-none">
+          <div className="w-full flex flex-col gap-3 pointer-events-auto">
             <div className="flex flex-wrap gap-2">
               {starterPrompts.map((prompt, idx) => (
                 <button
                   key={idx}
-                  disabled={isAgentStreaming}
+                  disabled={isAgentStreaming || isNameModalOpen}
                   onClick={() => handleSendMessage(prompt.text)}
-                  className="text-[11px] font-medium tracking-wide border border-separator/60 hover:border-accent bg-surface-secondary/20 hover:bg-surface-secondary/80 text-foreground/90 transition-all px-3 py-1.5 rounded-[var(--field-radius)] disabled:opacity-50 disabled:pointer-events-none"
+                  className="text-[11px] font-medium tracking-wide border border-separator/60 hover:border-accent bg-surface-secondary/40 hover:bg-surface-secondary/80 text-foreground/90 transition-all px-3 py-1.5 rounded-[var(--field-radius)] disabled:opacity-50 disabled:pointer-events-none"
                 >
                   {prompt.label}
                 </button>
@@ -289,18 +437,18 @@ export default function Chat() {
             <div className="flex items-center gap-2 w-full relative mb-1">
               <Input
                 aria-label="Agent Prompt Input"
-                placeholder={hasChartData ? "Ask about career trajectories, daily cosmic transits..." : "Provide birth specs above or ask general inquiries..."}
+                placeholder={hasChartData ? "Ask about career trajectories, daily cosmic transits..." : "Provide birth specs above to begin planetary calculations..."}
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
-                disabled={isAgentStreaming}
+                disabled={isAgentStreaming || isNameModalOpen}
                 className="flex-1 text-foreground"
                 size="md"
               />
               <Tooltip content="Disseminate query payload to AstroAgent Graph">
                 <Button
                   isIconOnly
-                  disabled={!inputValue.trim() || isAgentStreaming}
+                  disabled={!inputValue.trim() || isAgentStreaming || isNameModalOpen}
                   onPress={() => handleSendMessage()}
                   className="h-12 w-12 rounded-[var(--field-radius)] min-w-0 bg-accent text-accent-foreground flex items-center justify-center flex-shrink-0"
                 >
@@ -309,12 +457,16 @@ export default function Chat() {
               </Tooltip>
             </div>
 
-            <div className="flex items-center justify-between text-[10px] text-muted px-0.5 mt-0.5">
+            <div className="flex items-center justify-between text-[10px] text-muted/80 px-0.5 mt-0.5 font-mono">
               <span>Graph Framework Base: LangGraph API V1</span>
               <span className="text-right">AstroAgent Framework</span>
             </div>
-          </footer>
-        </section>
+          </div>
+        </footer>
+
+        {/* Modal Interfaces */}
+        <NameModal isOpen={isNameModalOpen} name={userName} setName={setUserName} isLoading={isCreatingUser} onSubmit={handleCreateUser} />
+        <BirthDetailsModal isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} birthDate={birthDate} setBirthDate={setBirthDate} birthTime={birthTime} setBirthTime={setBirthTime} birthLocation={birthLocation} setBirthLocation={setBirthLocation} isLoading={isOnboardingLoading} onSubmit={handleOnboardingSubmit} />
       </div>
     </DefaultLayout>
   );

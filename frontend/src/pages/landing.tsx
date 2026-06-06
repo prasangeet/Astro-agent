@@ -1,6 +1,7 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import DefaultLayout from "@/layouts/default";
-import { Button, Card, Link } from "@heroui/react";
+import { Button, Card } from "@heroui/react";
 
 const SparklesIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className={props.className}>
@@ -9,6 +10,8 @@ const SparklesIcon = (props: React.SVGProps<SVGSVGElement>) => (
 );
 
 export default function LandingPage() {
+  const navigate = useNavigate();
+
   return (
     <DefaultLayout>
       <div className="w-full min-h-[calc(100vh-5rem)] max-w-5xl mx-auto flex flex-col justify-center items-center px-4 sm:px-6 py-12 gap-16 overflow-hidden">
@@ -31,18 +34,17 @@ export default function LandingPage() {
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full sm:w-auto mt-2">
             <Button
-              as={Link}
-              href="/chat"
+              variant="primary"
+              onPress={() => navigate("/chat")}
               className="w-full sm:w-auto px-8 font-semibold text-xs tracking-wider uppercase h-11 bg-accent text-accent-foreground rounded-[var(--field-radius)]"
             >
               Open AstroAgent Chat
             </Button>
+
             <Button
-              as={Link}
-              href="https://github.com"
-              isExternal
-              variant="bordered"
-              className="w-full sm:w-auto px-8 font-medium text-xs tracking-wider uppercase h-11 border-separator/60 text-foreground bg-surface-secondary/10 hover:bg-surface-secondary/40 rounded-[var(--field-radius)]"
+              variant="outline"
+              onPress={() => window.open("https://github.com", "_blank", "noopener,noreferrer")}
+              className="w-full sm:w-auto px-8 font-medium text-xs tracking-wider uppercase h-11 border border-separator/60 text-foreground bg-surface-secondary/10 hover:bg-surface-secondary/40 rounded-[var(--field-radius)]"
             >
               View Repository Specs
             </Button>

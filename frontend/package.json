@@ -13,12 +13,14 @@
     "@heroui/react": "3.1.0",
     "@heroui/styles": "3.1.0",
     "@internationalized/date": "^3.12.2",
+    "axios": "^1.16.1",
     "clsx": "2.1.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
     "react-router-dom": "6.23.0",
-    "recharts": "^3.8.1"
+    "recharts": "^3.8.1",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@eslint/compat": "1.2.8",

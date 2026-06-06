@@ -37,14 +37,6 @@ class BirthProfileService:
 
             geo = geocode_place(place)
 
-            logger.info(
-                "[%s] Geocoded %s -> (%s, %s)",
-                request_id,
-                place,
-                geo["latitude"],
-                geo["longitude"],
-            )
-
             profile = BirthProfile(
                 user_id=user_id,
                 date=date,
@@ -114,6 +106,59 @@ class BirthProfileService:
                 "[%s] Failed fetching birth profile for user=%s",
                 request_id,
                 user_id,
+            )
+
+            raise
+
+    @staticmethod
+    def update_birth_profile(
+        db: Session,
+        user_id: int,
+        date,
+        time,
+        place: str,
+        request_id: str,
+    ) -> BirthProfile:
+        try:
+            logger.info(
+                "[%s] Updating birth profile for user=%s",
+                request_id,
+                user_id,
+            )
+
+            profile = (
+                db.query(BirthProfile).filter(BirthProfile.user_id == user_id).first()
+            )
+
+            if not profile:
+                raise ValueError(f"Birth profile not found for user {user_id}")
+
+            geo = geocode_place(place)
+
+            profile.date = date
+            profile.time = time
+            profile.place = place
+            profile.latitude = geo["latitude"]
+            profile.longitude = geo["longitude"]
+            profile.timezone = geo["timezone"]
+
+            db.commit()
+            db.refresh(profile)
+
+            logger.info(
+                "[%s] Birth profile updated id=%s",
+                request_id,
+                profile.id,
+            )
+
+            return profile
+
+        except Exception:
+            db.rollback()
+
+            logger.exception(
+                "[%s] Failed updating birth profile",
+                request_id,
             )
 
             raise

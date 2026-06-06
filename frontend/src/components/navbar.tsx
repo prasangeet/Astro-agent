@@ -63,15 +63,6 @@ export const Navbar = () => {
         <div className="hidden sm:flex items-center gap-4">
           <div className="flex items-center gap-1 border-l border-separator pl-4">
             <Link
-              aria-label="Twitter"
-              className="text-muted hover:text-accent transition-colors p-1"
-              href={siteConfig.links.twitter}
-              rel="noopener noreferrer"
-              target="_blank"
-            >
-              <TwitterIcon className="w-4 h-4" />
-            </Link>
-            <Link
               aria-label="Github"
               className="text-muted hover:text-accent transition-colors p-1"
               href={siteConfig.links.github}
@@ -84,16 +75,16 @@ export const Navbar = () => {
             <ThemeSwitch className="text-muted hover:text-accent transition-colors" />
           </div>
 
-          <div className="hidden md:flex">
-            <Button
-              className="text-xs font-medium rounded-[var(--radius)]"
-              variant="solid"
-              onPress={() => window.open(siteConfig.links.sponsor, "_blank")}
-            >
-              <HeartFilledIcon className="w-3.5 h-3.5 text-danger" />
-              Sponsor
-            </Button>
-          </div>
+          {/* <div className="hidden md:flex"> */}
+          {/*   <Button */}
+          {/*     className="text-xs font-medium rounded-[var(--radius)]" */}
+          {/*     variant="solid" */}
+          {/*     onPress={() => window.open(siteConfig.links.sponsor, "_blank")} */}
+          {/*   > */}
+          {/*     <HeartFilledIcon className="w-3.5 h-3.5 text-danger" /> */}
+          {/*     Sponsor */}
+          {/*   </Button> */}
+          {/* </div> */}
         </div>
 
         {/* Mobile menu trigger toggle */}
